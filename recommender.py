@@ -4,17 +4,13 @@ import numpy as np
 import os
 # from sqlalchemy import create_engine
 # from sqlalchemy.orm import sessionmaker
-
 from sklearn.decomposition import NMF
 from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
-
 from sql_tables import HOST, PORT, USERNAME, PASSWORD, DB
 from sql_tables import Base, Movie, Rating, Tag, Link
 from sql_tables import connect_to_db, read_tables
 
-
-# MOVIES = ['Parasite', 'Moonlight', 'Star Wars', 'The Godfather', 'Das Boot', 'Pulp Fiction']
 
 def get_rating_matrix(ratings_table, movies_table, movie_id_col="movieId",
                       user_id_col="userId", rating_col="rating"):
@@ -123,9 +119,9 @@ def get_top_recommendations(n_recommendations, user_choice_vec, movies_df):
     lookup_dict = get_lookup_dict(movies_df, 'movieId', 'title')
     return [lookup_dict[n] for n in recs.index]
 
-def get_recommendations(movie_choices, n_recommendations=5, n_components=20, fill_value=0, conn_string=None):
+def prep_for_recommendations(n_components=20, fill_value=0, conn_string=None):
     """
-    returns list of recommendations
+    Set up tables needed for making recommendations
     """
     if conn_string == None:
         conn_string = f'postgres://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DB}'
@@ -138,7 +134,22 @@ def get_recommendations(movie_choices, n_recommendations=5, n_components=20, fil
 
     rating_matrix = process_rating_matrix(rating_matrix, fill_value=fill_value)
     model = train_nmf_model(rating_matrix, n_components=n_components)
-    Rhat = calculate_transformed_matrix(model, rating_matrix)
+    # Rhat = calculate_transformed_matrix(model, rating_matrix)
+
+    # all_the_stuff = {
+    #     'model':model,
+    #     'movies':movies,
+    #     'ratings':ratings,
+    #     'rating_matrix':rating_matrix,
+    # }
+
+    return movies, ratings, rating_matrix, model
+
+
+def get_recommendations(movie_choices, movies, ratings, rating_matrix, model, n_recommendations=5):
+    """
+    returns list of recommendations
+    """
 
     movie_choices = sanitize_titles(movie_choices, movies, rating_matrix)
     numbers = get_movieIds_from_titles(movie_choices, movies)
