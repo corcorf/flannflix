@@ -7,10 +7,13 @@ flask run
 from flask import Flask
 from flask import render_template, request
 import recommender
+import logging
+
+logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 app = Flask('movie recommender')
 
-movies, ratings, rating_matrix, model = recommender.prep_for_recommendations()
+movies, ratings, rating_matrix, model = recommender.prep_for_recommendations(fill_value='median')
 
 
 @app.route('/') # Decorator (adds functionality to a function)
@@ -30,10 +33,16 @@ def run_recommender():
     context = dict(title="Your recommendations:")
     if n_selections > 0:
         result = recommender.get_recommendations(selections, movies, ratings, rating_matrix, model, n_recommendations)
+        result, interpreted_choices = result
+        interpretation_message = "Based on our interpretation of your choices"
     else:
         result = ["Parasite"]
+        interpreted_choices = []
+        interpretation_message = ""
 
     context['movies'] = result
+    context['interpreted_choices'] = interpreted_choices
+    context['interpretation_message'] = interpretation_message
     return render_template('recommendation.html',
                             **context
                         )

@@ -5,6 +5,7 @@ Database must already exist
 """
 
 import pandas as pd
+import dask.dataframe as dd
 import numpy as np
 import os
 import logging
@@ -16,7 +17,11 @@ from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, F
 from sqlalchemy import CheckConstraint
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
+from sqlalchemy.inspection import inspect
 import psycopg2
+
+USE_DASK = os.getenv("USE_DASK")
+logging.debug(f"USE_DASK = {USE_DASK}")
 
 Base = declarative_base()
 
@@ -64,9 +69,9 @@ class Rating(Base):
         CheckConstraint('timestamp>=0'),
     )
 
-#     ratingId = Column(BigInteger, primary_key=True)
-    userId = Column(BigInteger, primary_key=True)
-    movieId = Column(BigInteger, ForeignKey('movies.movieId'), primary_key=True)
+    ratingId = Column(BigInteger, primary_key=True)
+    userId = Column(BigInteger)#, primary_key=True)
+    movieId = Column(BigInteger, ForeignKey('movies.movieId'))#, primary_key=True)
     rating = Column(Float)
     timestamp = Column(BigInteger)
 
@@ -91,11 +96,11 @@ class Tag(Base):
         CheckConstraint('timestamp>=0'),
     )
 
+    tagId = Column(BigInteger, primary_key=True)
     userId = Column(BigInteger) #ForeignKey('ratings.userId'), , primary_key=True
     movieId = Column(BigInteger, ForeignKey('movies.movieId')) #, primary_key=True
     tag = Column(String)
     timestamp = Column(BigInteger)
-    tagId = Column(BigInteger, primary_key=True)
 
     # ratings = relationship('Rating')
     movies = relationship('Movie')
@@ -125,11 +130,17 @@ class Link(Base):
         return "<Link(movie='%s', imdb='%s', tmdb='%s')>" % (
                             self.movieId, self.imdbId, self.tmdbId)
 
+def get_table_name_from_class(class_name):
+    """get a dictionary relating sqlalchemy ORM class names to SQL table names"""
+    table_to_class = {c.__tablename__:c for c in [Rating, Tag, Movie, Link]}
+    return table_to_class[class_name]
+
 def connect_to_db(conn_string, verbose=False):
     """
     Connect to the database
     Returns an engine and a session
     """
+    logging.debug(f"attempting to connect to DB with conn_string {conn_string}")
     engine = create_engine(conn_string, echo=verbose)
     Session = sessionmaker(bind=engine)
     session = Session()
@@ -169,6 +180,7 @@ def load_data(path=os.path.join(os.sep,'home','flann','spiced','data','ml-latest
 
 def add_to_tables(data, engine):
     """add data in dictionary to sql engine"""
+    logging.debug(f"adding data to SQL tables with connection {engine.url}")
     for name, df in data.items():
         df.to_sql(name=name,con=engine, if_exists='append', index=False)
 
@@ -176,6 +188,7 @@ def create_tables_and_add_data(conn_string):
     """
     Creates all tables in the sql database
     """
+    logging.debug(f"Creating SQL tables")
     engine, session = connect_to_db(conn_string)
     logging.debug(f'Creating tables in sql')
     Base.metadata.create_all(engine)
@@ -199,11 +212,30 @@ def create_tables_and_add_data(conn_string):
 #     """
 #     result = session.query(table).order_by(table.id)
 #     return pd.DataFrame(result)
+# def read_tables(engine, table_names = ['ratings', 'tags', 'links', 'movies']):
+#     """Get pandas dataframes for all tables in table_names"""
+#     all_tables = {}
+#     for name in table_names:
+#         all_tables[name] = pd.read_sql_table(name,engine)
+#     return all_tables
+
 def read_tables(engine, table_names = ['ratings', 'tags', 'links', 'movies']):
     """Get pandas dataframes for all tables in table_names"""
+    logging.debug(f"reading SQL tables {table_names}")
     all_tables = {}
-    for name in table_names:
-        all_tables[name] = pd.read_sql_table(name,engine)
+    if USE_DASK:
+        for name in table_names:
+            class_ = get_table_name_from_class(name)
+            p_keys = [key.name for key in inspect(class_).primary_key][0]
+            table = dd.read_sql_table(table=name, uri=engine.url, index_col=p_keys)
+            all_tables[name] =  table
+            logging.debug(f"df {name} has columns {table.columns}")
+    else:
+        for name in table_names:
+            table = pd.read_sql_table(name,engine)
+            all_tables[name] =  table
+            logging.debug(f"df {name} has columns {table.columns}")
+
     return all_tables
 
 

@@ -6,4 +6,13 @@
 {% endfor %}
 </ul>
 
+<p>{{ interpretation_message }}</p>
+
+<ul>
+{% for name in interpreted_choices %}
+    <li>{{ name }}</li>
+{% endfor %}
+</ul>
+
+
 <p><a href="/">GO BACK</a></p>
