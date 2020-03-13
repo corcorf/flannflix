@@ -12,12 +12,13 @@ from fuzzywuzzy import fuzz
 from fuzzywuzzy import process
 from sql_tables import HOST, PORT, USERNAME, PASSWORD, DB
 from sql_tables import Base, Movie, Rating, Tag, Link
-from sql_tables import connect_to_db, read_tables
+import sql_tables as sql
 from time import time
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
-USE_DASK = os.getenv("USE_DASK")
+USE_DASK = os.getenv("USE_DASK") =="True"
+# USE_DASK=False
 
 logging.debug(f"USE_DASK = {USE_DASK}")
 
@@ -106,60 +107,78 @@ def calculate_transformed_matrix(model, rating_matrix):
     Rhat = pd.DataFrame(np.dot(P, Q), index=R.index, columns=R.columns)
     return Rhat
 
-def get_movies_list(movies_df):
-    """
-    returns list of unique movies
-    """
-    logging.debug(f"getting list of movies from pandas DataFrame object movies_df")
-    if USE_DASK:
-        movies_list = movies_df['title'].drop_duplicates().compute().to_list()
-    else:
-        movies_list = movies_df['title'].drop_duplicates().to_list()
-    return movies_list
+# def get_movies_list(movies_df):
+#     """
+#     returns list of unique movies
+#     """
+#     logging.debug(f"getting list of movies from pandas DataFrame object movies_df")
+#     if USE_DASK:
+#         movies_list = movies_df['title'].drop_duplicates().compute().to_list()
+#     else:
+#         movies_list = movies_df['title'].drop_duplicates().to_list()
+#     return movies_list
 
-def get_lookup_dict(df, key_column, value_column):
-    """
-    Returns look-up dictionary
-    """
+# def sql.get_lookup_dict(df, key_column, value_column):
+#     """
+#     Returns look-up dictionary
+#     """
+#
+#     logging.debug(f"generating a lookup dictionary from df using keys from {key_column}\
+#        and values from {value_column}")
+#     if USE_DASK:
+#         df = df[[key_column, value_column]].compute()
+#         return df.set_index(key_column)[value_column].to_dict()
+#     else:
+#         return df.set_index(key_column)[value_column].to_dict()
 
-    logging.debug(f"generating a lookup dictionary from df using keys from {key_column} and values from {value_column}")
-    if USE_DASK:
-        df = df[[key_column, value_column]].compute()
-        return df.set_index(key_column)[value_column].to_dict()
-    else:
-        return df.set_index(key_column)[value_column].to_dict()
 
-def interpret_titles(movie_choices, movies_df, rating_matrix):
+
+def interpret_titles_fuzzy(movie_choices, session):
     """
     Takes user-specified names of movies
     processes using fuzzywuzzy
     returns list of the closest matching titles in the database
     """
     logging.debug(f"interpreting titles with fuzzywuzzy")
-    all_movies = get_movies_list(movies_df)
+    # all_movies = get_movies_list(movies_df)
+    all_movies = sql.get_unique_movies(session)
     # convert titles using fuzzywuzzy
-    movie_choices = [process.extractOne(title, all_movies)[0] for title in movie_choices]
-    return movie_choices
+    interpreted_choices = [process.extractOne(title, all_movies)[0]
+                            for title in movie_choices]
+    return interpreted_choices
 
-def get_movieIds_from_titles(movie_choices, movies_df):
+def interpret_titles_full_text(movie_choices, session):
+    """
+    Takes user-specified names of movies
+    processes using postgresql full text search
+    returns list of the closest matching titles in the database
+    """
+    logging.debug(f"interpreting titles via postgres full text search")
+    # all_movies = get_movies_list(movies_df)
+    all_movies = sql.get_unique_movies(session)
+    # convert titles using full text search
+    interpreted_choices = list()
+    for title in movie_choices:
+        interpreted_choices.append(sql.full_text_search_movies(session, title))
+    return interpreted_choices
+
+def get_movieIds_from_titles(movie_choices, session):
     """
     Takes list of sanitized movie titles and returns list of corresponding movieIds
     """
-    logging.debug(f"movies_df columns: {movies_df.columns}")
-    lookup_dict = get_lookup_dict(movies_df, 'title', 'movieId')
-    numbers = [lookup_dict[t] for t in movie_choices]
-    return numbers
+    logging.debug(f"querying movie ids for: {movie_choices}")
+    return query_movie_titles(session, movie_choices)
 
 def create_user_choice_vector(rating_matrix, movie_choice_numbers, rating=5):
     """
     Takes movieIds of users selected movies
     Returns dataframe containing vector of users chosen movie with assumed rating
     """
-    logging.debug(f"Creating user choice vector")
+    logging.debug(f"Creating user choice vector from movieIds {movie_choice_numbers}")
     user_choice_vec = pd.DataFrame(index=rating_matrix.columns)
     user_choice_vec['rating'] = 0
-    for n in movie_choice_numbers:
-        user_choice_vec.loc[n,'rating'] = rating
+    # for n in movie_choice_numbers:
+    user_choice_vec.loc[movie_choice_numbers,'rating'] = rating
     return user_choice_vec
 
 def get_user_recommendation_vector(user_choice_vec, rating_matrix, model):
@@ -186,13 +205,14 @@ def add_user_to_rhat(user_choice_vec, rating_matrix, model, Rhat):
     return augmented_rhat
 
 
-def get_top_recommendations(n_recommendations, user_choice_vec, movies_df):
+def get_top_recommendations(n_recommendations, user_rec_vec, session):
     """
     returns list of top recommendations for user
     """
-    recs = user_choice_vec.sort_values(ascending=False).head(n_recommendations * 2)
-    lookup_dict = get_lookup_dict(movies_df, 'movieId', 'title')
-    recs = [lookup_dict[n] for n in recs.index]
+    recs = user_rec_vec.sort_values(ascending=False).head(n_recommendations * 2)
+    # lookup_dict = sql.get_lookup_dict(movies_df, 'movieId', 'title')
+    # recs = [lookup_dict[n] for n in recs.index]
+    recs = sql.query_movie_titles_from_ids(session, recs.index)
     return recs
 
 def remove_overlaps(recommendations, interpreted_choices):
@@ -210,9 +230,9 @@ def prep_for_recommendations(n_components=20, fill_value=0, conn_string=None):
     logging.debug(f"preparing data for movie recommendations")
     if conn_string == None:
         conn_string = f'postgres://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DB}'
-    engine, session = connect_to_db(conn_string)
+    engine, session = sql.connect_to_db(conn_string)
 
-    data = read_tables(engine, table_names=['ratings','movies'])
+    data = sql.read_tables(engine, table_names=['ratings','movies'])
     ratings = data['ratings']
     movies = data['movies']
     rating_matrix = get_rating_matrix(ratings, movies)
@@ -236,12 +256,15 @@ def get_recommendations(movie_choices, movies, ratings, rating_matrix, model, n_
     returns a list of recommendations and a list of the interpreted choices
     """
     logging.debug(f"getting movie recommendations")
-    interpreted_choices = interpret_titles(movie_choices, movies, rating_matrix)
-    numbers = get_movieIds_from_titles(interpreted_choices, movies)
+    conn_string = f'postgres://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DB}'
+    engine, session = sql.connect_to_db(conn_string)
+    # interpreted_choices = interpret_titles_fuzzy(movie_choices, session)
+    interpreted_choices = interpret_titles_full_text(movie_choices, session)
+    numbers = sql.query_movieIds_from_titles(session, interpreted_choices)
 
     choice_vec = create_user_choice_vector(rating_matrix, numbers, rating=5)
     rec_vec = get_user_recommendation_vector(choice_vec, rating_matrix, model)
-    recommendations = get_top_recommendations(n_recommendations, rec_vec.squeeze(), movies)
+    recommendations = get_top_recommendations(n_recommendations, rec_vec.squeeze(), session)
     recommendations = remove_overlaps(recommendations, interpreted_choices)
     recommendations = recommendations[:n_recommendations]
     return recommendations, interpreted_choices

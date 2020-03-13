@@ -43,6 +43,8 @@ def run_recommender():
     context['movies'] = result
     context['interpreted_choices'] = interpreted_choices
     context['interpretation_message'] = interpretation_message
+    context['user_input'] = selections
+    context['inputs_to_interpretations'] = list(zip(selections, interpreted_choices))
     return render_template('recommendation.html',
                             **context
                         )
