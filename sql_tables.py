@@ -24,7 +24,6 @@ import psycopg2
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 USE_DASK = os.getenv("USE_DASK") =="True"
-# USE_DASK=False
 logging.debug(f"USE_DASK = {USE_DASK}")
 
 Base = declarative_base()
@@ -75,8 +74,8 @@ class Rating(Base):
     )
 
     ratingId = Column(BigInteger, primary_key=True)
-    userId = Column(BigInteger)#, primary_key=True)
-    movieId = Column(BigInteger, ForeignKey('movies.movieId'))#, primary_key=True)
+    userId = Column(BigInteger)
+    movieId = Column(BigInteger, ForeignKey('movies.movieId'))
     rating = Column(Float)
     timestamp = Column(BigInteger)
 
@@ -102,12 +101,11 @@ class Tag(Base):
     )
 
     tagId = Column(BigInteger, primary_key=True)
-    userId = Column(BigInteger) #ForeignKey('ratings.userId'), , primary_key=True
-    movieId = Column(BigInteger, ForeignKey('movies.movieId')) #, primary_key=True
+    userId = Column(BigInteger)
+    movieId = Column(BigInteger, ForeignKey('movies.movieId'))
     tag = Column(String)
     timestamp = Column(BigInteger)
 
-    # ratings = relationship('Rating')
     movies = relationship('Movie')
 
     def __repr__(self):
@@ -202,14 +200,12 @@ def read_tables(engine, table_names = ['ratings', 'tags', 'links', 'movies']):
 
     return all_tables
 
-
 def get_unique_movies(session):
     """Return an array of unique movie titles"""
     q = session.query(Movie).join(Rating).subquery()
     result = session.query(distinct(q.c.title)).all()
     result = np.array(result).reshape(-1).astype(str)
     return result
-
 
 def get_movie_ids_and_titles(session):
     """Return a list of id, title tuples"""
@@ -221,7 +217,6 @@ def query_movie_titles_from_ids(session, movie_ids):
     q =  session.query(Movie.movieId, Movie.title)
     q = q.filter(Movie.movieId.in_(movie_ids)).subquery()
     result = session.query(q.c.title).all()
-    # result = [r.title for r in result]
     result = np.array(result).reshape(-1).astype(str)
     return result
 
@@ -230,7 +225,6 @@ def query_movieIds_from_titles(session, movie_titles):
     q =  session.query(Movie.movieId, Movie.title)
     q = q.filter(Movie.title.in_(movie_titles)).subquery()
     result = session.query(q.c.movieId).all()
-    # result = [r.movieId for r in result]
     result = np.array(result).reshape(-1).astype(int)
     return result
 
@@ -311,53 +305,3 @@ def pick_random_movies(session, n_movies=5):
 if __name__ == '__main__':
     # create_tables_and_add_data(conn_string)
     pass
-
-
-############################
-# HERE BE DRAGONS!!!!!!!
-############################
-
-# def alt_create_tables_and_add_data(conn_string):
-#     """
-#     NOT USED - Creates all tables in the sql database
-#     """
-#     engine, session = connect_to_db(conn_string)
-#     logging.debug(f'Creating tables in sql')
-#     Base.metadata.create_all(engine)
-#     table_files = get_table_files()
-#     process_files(table_files, conn_string)
-#
-# def select_all_from_table(session, table):
-#     """
-#     Select all from table in the postgres database
-#     Returns a pandas dataframe
-#     """
-#     result = session.query(table).order_by(table.id)
-#     return pd.DataFrame(result)
-# def read_tables(engine, table_names = ['ratings', 'tags', 'links', 'movies']):
-#     """Get pandas dataframes for all tables in table_names"""
-#     all_tables = {}
-#     for name in table_names:
-#         all_tables[name] = pd.read_sql_table(name,engine)
-#     return all_tables
-
-# def get_table_files(path=os.path.join(os.sep,'home','flann','spiced','data','ml-latest-small')):
-#     """ NOT USED - part of attempt at a non-pandas method for loading to tables """
-#     table_files = {
-#         'movies': os.path.join(path, 'movies.csv'),
-#         'tags': os.path.join(path, 'tags.csv'),
-#         'links': os.path.join(path, 'links.csv'),
-#         'ratings': os.path.join(path, 'ratings.csv'),
-#     }
-#     return table_files
-#
-# def process_files(table_files, conn_string):
-#     """ NOT USED - part of attempt at a non-pandas method for loading to tables """
-#     logging.debug(f'Writing to database')
-#     conn = psycopg2.connect(conn_string)
-#     cur = conn.cursor()
-#     for table_name, filename in table_files.items():
-#         with open(filename, 'r') as f:
-#             next(f) # Skip the header row.
-#             cur.copy_from(f, table_name, sep=',')
-#             conn.commit()

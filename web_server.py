@@ -26,11 +26,9 @@ def run_recommender():
     n_recommendations = 5
     selections = [request.args[f'movie_{n+1}'] for n in range(5) if request.args[f'movie_{n+1}'] != ""]
     n_selections = len(selections)
-    # try:
-    #     n = int(request.args['movie_1'])
-    # except ValueError:
-    #     n = 3
+
     context = dict(title="Your recommendations:")
+
     if n_selections > 0:
         result = recommender.get_recommendations(selections, movies, ratings, rating_matrix, model, n_recommendations)
         result, interpreted_choices = result
@@ -45,6 +43,10 @@ def run_recommender():
     context['interpretation_message'] = interpretation_message
     context['user_input'] = selections
     context['inputs_to_interpretations'] = list(zip(selections, interpreted_choices))
-    return render_template('recommendation.html',
-                            **context
-                        )
+
+    return render_template('recommendation.html', **context)
+
+
+@app.route('/recommendation_frequencies')
+def show_rec_freqs():
+    return render_template('recommendation_frequencies.html')
