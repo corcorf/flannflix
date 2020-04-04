@@ -10,45 +10,34 @@ h1 {
   margin-left: 0px;
   margin-top: 20px;
   margin-bottom: 20px;
-  /* background-color: #dddddd2f; */
   padding-top: 20px;
   padding-bottom: 20px;
-  /* padding-left: 5px; */
 }
 
 body {
   background-image: url("/static/theatre.jpg");
-  /* background-repeat: no-repeat; */
   background-size: cover;
   background-color: #000000;
 }
 
-/* # refers to an id attribute of a tag */
-/* id attributes should refer to one and only one tag  */
 .instructions {
   color: var(--default-text-colour);
-  /* font-family: Helvetica; */
 }
 
 .recs {
   color: var(--default-text-colour);
-  /* font-family: Helvetica; */
 }
 
 #interpretations {
   color: var(--default-text-colour);
   background-color: #00000000;
-  /* font-family: Helvetica; */
 }
 
 
 .input {
   background-color: #dddddd;
-  /* font-family: Helvetica; */
 }
 
-/* . refers to the class attribute of a tag  */
-/* classes may refer to many tags */
 .second {
   color: darkred;
   font-family: Helvetica;

@@ -1,0 +1,9 @@
+pandas
+numpy
+altair
+sqlalchemy
+psycopg2-binary
+dask
+scikit-learn
+fuzzywuzzy
+flask

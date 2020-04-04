@@ -4,39 +4,35 @@ If run as main, will attempt to load data and create tables in database
 Database must already exist
 """
 
-import pandas as pd
-import dask.dataframe as dd
-import numpy as np
 import os
-import logging
 import re
-import random
-from datetime import datetime
+import logging
+import pandas as pd
+import numpy as np
+import dask.dataframe as dd
 from sqlalchemy import create_engine, distinct, CheckConstraint
-from sqlalchemy import Column, ForeignKey, Integer, String, Boolean, DateTime, Float, BigInteger
+from sqlalchemy import Column, ForeignKey, String, Float, BigInteger
 from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.sql import func
 from sqlalchemy.inspection import inspect
-import psycopg2
 
 logging.basicConfig(filename='debug.log', level=logging.DEBUG)
 
 USE_DASK = os.getenv("USE_DASK") == "True"
-logging.debug(f"USE_DASK = {USE_DASK}")
+logging.debug("USE_DASK = %s", USE_DASK)
 
-Base = declarative_base()
+BASE = declarative_base()
 
 HOST = 'localhost'
 PORT = '5432'
 USERNAME = 'flann'
 PASSWORD = os.getenv('pgpassword')
 DB = 'movies'
-conn_string = f'postgres://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DB}'
+CONN_STRING = f'postgres://{USERNAME}:{PASSWORD}@{HOST}:{PORT}/{DB}'
 
 
-class Movie(Base):
+class Movie(BASE):
     """
     Class for new rows in movies SQL table
     _______
@@ -53,11 +49,10 @@ class Movie(Base):
     tokens = Column(TSVECTOR)
 
     def __repr__(self):
-        return "<Movie(movie='%s', title='%s')>" % (
-                            self.movieId, self.title)
+        return "<Movie(movie='%s', title='%s')>" % (self.movieId, self.title)
 
 
-class Rating(Base):
+class Rating(BASE):
     """
     Class for new rows in ratings SQL table
     _______
@@ -84,12 +79,13 @@ class Rating(Base):
     movie = relationship('Movie')
 
     def __repr__(self):
-        return "<Rating(user='%s', movie='%s', rating='%s')>" % (
-                            self.userId, self.movieId, self.rating)
+        return "<Rating(user='%s', movie='%s', rating='%s')>" \
+            % (self.userId, self.movieId, self.rating)
 
 
-class Tag(Base):
-    """Class for new rows in tags SQL table
+class Tag(BASE):
+    """
+    Class for new rows in tags SQL table
     _______
     columns:
         tagId (BigInteger)
@@ -112,12 +108,13 @@ class Tag(Base):
     movies = relationship('Movie')
 
     def __repr__(self):
-        return "<Tag(id='%s', user='%s', movie='%s', tag='%s')>" % (
-                            self.tagId, self.userId, self.movieId, self.tag)
+        return "<Tag(id='%s', user='%s', movie='%s', tag='%s')>" \
+            % (self.tagId, self.userId, self.movieId, self.tag)
 
 
-class Link(Base):
-    """Class for new rows in links SQL table
+class Link(BASE):
+    """
+    Class for new rows in links SQL table
     _______
     columns:
         movieId (BigInteger)
@@ -127,15 +124,16 @@ class Link(Base):
     __tablename__ = "links"
     __table_args__ = ()
 
-    movieId = Column(BigInteger, ForeignKey('movies.movieId'), primary_key=True)
+    movieId = Column(BigInteger, ForeignKey('movies.movieId'),
+                     primary_key=True)
     imdbId = Column(BigInteger)
     tmdbId = Column(BigInteger)
 
     movies = relationship('Movie')
 
     def __repr__(self):
-        return "<Link(movie='%s', imdb='%s', tmdb='%s')>" % (
-                            self.movieId, self.imdbId, self.tmdbId)
+        return "<Link(movie='%s', imdb='%s', tmdb='%s')>" \
+            % (self.movieId, self.imdbId, self.tmdbId)
 
 
 def get_table_name_from_class(class_name):
@@ -151,18 +149,17 @@ def connect_to_db(conn_string, verbose=False):
     Connect to the database
     Returns an engine and a session
     """
-    msg = f"attempting to connect to DB with conn_string {conn_string}"
-    logging.debug(msg)
+    logging.debug("attempting to connect to DB with conn_string %s",
+                  conn_string)
     engine = create_engine(conn_string, echo=verbose)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = sessionmaker(bind=engine)()
     return engine, session
 
 
 def load_data(path=os.path.join(os.sep, 'home', 'flann', 'spiced', 'data',
                                 'ml-latest-small')):
     """load data from files"""
-    logging.debug(f'Loading data to database')
+    logging.debug('Loading data to database')
     data = dict(
         movies=pd.read_csv(os.path.join(path, 'movies.csv')),
         ratings=pd.read_csv(os.path.join(path, 'ratings.csv')),
@@ -174,26 +171,28 @@ def load_data(path=os.path.join(os.sep, 'home', 'flann', 'spiced', 'data',
 
 def add_to_tables(data, engine):
     """add data in dictionary to sql engine"""
-    logging.debug(f"adding data to SQL tables with connection {engine.url}")
-    for name, df in data.items():
-        df.to_sql(name=name, con=engine, if_exists='append', index=False)
+    logging.debug("adding data to SQL tables with connection %s", engine.url)
+    for name, table in data.items():
+        table.to_sql(name=name, con=engine, if_exists='append', index=False)
 
 
 def create_tables_and_add_data(conn_string):
     """
     Creates all tables in the sql database
     """
-    logging.debug(f"Creating SQL tables")
-    engine, session = connect_to_db(conn_string)
-    logging.debug(f'Creating tables in sql')
-    Base.metadata.create_all(engine)
+    logging.debug("Creating SQL tables")
+    engine, _ = connect_to_db(conn_string)
+    logging.debug('Creating tables in sql')
+    BASE.metadata.create_all(engine)
     data = load_data()
     add_to_tables(data, engine)
 
 
-def read_tables(engine, table_names=['ratings', 'tags', 'links', 'movies']):
-    """Get pandas dataframes for all tables in table_names"""
-    logging.debug(f"reading SQL tables {table_names}")
+def read_tables(engine, table_names):
+    """
+    Get pandas dataframes for all tables in table_names
+    """
+    logging.debug("reading SQL tables %s", table_names)
     all_tables = {}
     if USE_DASK:
         for name in table_names:
@@ -202,20 +201,20 @@ def read_tables(engine, table_names=['ratings', 'tags', 'links', 'movies']):
             table = dd.read_sql_table(table=name, uri=engine.url,
                                       index_col=p_keys)
             all_tables[name] = table
-            logging.debug(f"df {name} has columns {table.columns}")
+            logging.debug("df %s has columns %s", name, table.columns)
     else:
         for name in table_names:
             table = pd.read_sql_table(name, engine)
             all_tables[name] = table
-            logging.debug(f"df {name} has columns {table.columns}")
+            logging.debug("df %s has columns %s", name, table.columns)
 
     return all_tables
 
 
 def get_unique_movies(session):
     """Return an array of unique movie titles"""
-    q = session.query(Movie).join(Rating).subquery()
-    result = session.query(distinct(q.c.title)).all()
+    query = session.query(Movie).join(Rating).subquery()
+    result = session.query(distinct(query.c.title)).all()
     result = np.array(result).reshape(-1).astype(str)
     return result
 
@@ -227,18 +226,18 @@ def get_movie_ids_and_titles(session):
 
 def query_movie_titles_from_ids(session, movie_ids):
     """query the database to get movie titles from ids"""
-    q = session.query(Movie.movieId, Movie.title)
-    q = q.filter(Movie.movieId.in_(movie_ids)).subquery()
-    result = session.query(q.c.title).all()
+    query = session.query(Movie.movieId, Movie.title)
+    query = query.filter(Movie.movieId.in_(movie_ids)).subquery()
+    result = session.query(query.c.title).all()
     result = np.array(result).reshape(-1).astype(str)
     return result
 
 
-def query_movieIds_from_titles(session, movie_titles):
+def query_movie_ids_from_titles(session, movie_titles):
     """query the database to get movie id numbers from titles"""
-    q = session.query(Movie.movieId, Movie.title)
-    q = q.filter(Movie.title.in_(movie_titles)).subquery()
-    result = session.query(q.c.movieId).all()
+    query = session.query(Movie.movieId, Movie.title)
+    query = query.filter(Movie.title.in_(movie_titles)).subquery()
+    result = session.query(query.c.movieId).all()
     result = np.array(result).reshape(-1).astype(int)
     return result
 
@@ -255,8 +254,8 @@ def check_full_search_operator(text_search_op):
     check that text_search_op is a valid operator for a postgres full-test
     search query. if not, break
     """
-    ops = ['<->', '&', '|']
-    if isinstance(text_search_op, str) and text_search_op.strip() in ops:
+    operators = ['<->', '&', '|']
+    if isinstance(text_search_op, str) and text_search_op.strip() in operators:
         pass
     else:
         raise Exception("unrecognised full text search operator")
@@ -283,17 +282,19 @@ def full_text_search(session, table, id_column, token_column, search_string,
     perform a full text search query on a column containing text-search tokens
     return the corresponding value in the id_column
     """
-    logging.debug(f"performing a full-text search for {search_string} on the movies table")
+    logging.debug("performing a full-text search for %s on the movies table",
+                  search_string)
 
     search_string = sanitize_search_term(search_string)
     check_full_search_operator(text_search_op)
     search_string = add_sql_full_search_operators(search_string,
                                                   text_search_op)
 
-    col = getattr(table.c, token_column)
-    q = session.query(getattr(table, id_column), getattr(table, token_column))
-    q = q.filter(getattr(table, token_column).match(search_string)).subquery()
-    result = session.query(getattr(q.c, id_column)).first()
+    query = session.query(getattr(table, id_column),
+                          getattr(table, token_column))
+    query = query.filter(getattr(table, token_column).match(search_string))\
+                 .subquery()
+    result = session.query(getattr(query.c, id_column)).first()
     return result
 
 
@@ -304,17 +305,19 @@ def full_text_search_movies(session, search_string, text_search_op="<->"):
     text search
     return the first match of the title
     """
-    logging.debug(f"performing a full-text search for {search_string} on the movies table")
+    logging.debug("performing a full-text search for %s on the movies table",
+                  search_string)
 
     search_string = sanitize_search_term(search_string)
     check_full_search_operator(text_search_op)
     search_string = add_sql_full_search_operators(search_string,
                                                   text_search_op)
 
-    q = session.query(Movie.movieId, Movie.title, Movie.tokens)
-    logging.debug(f"sanitized search string is {search_string} on the movies table")
-    q = q.filter(Movie.tokens.match(search_string)).subquery()
-    result = session.query(q.c.title).first()
+    query = session.query(Movie.movieId, Movie.title, Movie.tokens)
+    logging.debug("sanitized search string is %s on the movies table",
+                  search_string)
+    query = query.filter(Movie.tokens.match(search_string)).subquery()
+    result = session.query(query.c.title).first()
     if result is None:
         result = "Nothing to see here..."
     else:
@@ -332,5 +335,5 @@ def pick_random_movies(session, n_movies=5):
 
 
 if __name__ == '__main__':
-    # create_tables_and_add_data(conn_string)
+    # create_tables_and_add_data(CONN_STRING)
     pass
