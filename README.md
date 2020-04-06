@@ -12,4 +12,11 @@ Movie recommender implemented through Flask, with PostGres, SQLalchemy, Dask, Sc
 ## Dataset:
 * MoviesLens 100K dataset (https://grouplens.org/datasets/movielens/100k/).
 
+## Images:
+![Main Page](images/FlannFlix_mainpage.png)
+
+![Recommendation Page](images/FlannFlix_recommendationpage.png)
+
+![Chart Page](images/FlannFlix_chartpage.png)
+
 Requires PostgreSQL.
