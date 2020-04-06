@@ -44,7 +44,7 @@ def create_frequency_chart(engine,
     source = source.reset_index().rename(columns={'index': '#',
                                                   'iteration': 'Count',
                                                   'recommendations': 'Movie'})
-    source['Frequency (%)'] = source['Count'] / total_recs
+    source['Frequency (%)'] = source['Count'] / total_recs * 100
     source = source.join(mean_ratings, on="Movie")
     source["Year"] = source['Movie'].str.extract(r"((?<=\()[0-9]+(?=\)\s*$))")\
                                         .astype(int)
